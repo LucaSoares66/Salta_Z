@@ -117,7 +117,7 @@ st.sidebar.header("Filtros")
 
 filtro_func = st.sidebar.selectbox(
     "Funcionando?",
-    ["todos", "sim", "nao"]
+    ["todos", "sim", "não"]
 )
 
 if filtro_func != "todos":
