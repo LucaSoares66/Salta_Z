@@ -54,7 +54,7 @@ df = carregar_dados()
 df.columns = df.columns.str.upper()
 
 df['FUNCIONANDO'] = df['FUNCIONANDO'].astype(str).str.lower()
-df['SITUAÇãO'] = df['SITUAÇãO'].astype(str).str.upper()
+df['SITUAÇÃO'] = df['SITUAÇÃO'].astype(str).str.upper()
 
 # -------------------------------
 # FILTRO ESTADOS
@@ -104,12 +104,12 @@ for _, row in df.iterrows():
         folium.CircleMarker(
             location=[row["LAT"], row["LON"]],
             radius=5,
-            color=get_color(row["SITUACAO"]),
+            color=get_color(row["SITUAÇÃO"]),
             fill=True,
             fill_opacity=0.7,
             popup=f"""
             <b>Estado:</b> {row['ESTADO']}<br>
-            <b>Situação:</b> {row['SITUACAO']}<br>
+            <b>Situação:</b> {row['SITUAÇÃO']}<br>
             <b>Funcionando:</b> {row['FUNCIONANDO']}
             """
         ).add_to(mapa)
