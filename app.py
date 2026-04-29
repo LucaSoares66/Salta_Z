@@ -16,7 +16,7 @@ st.set_page_config(layout="wide")
 col1, col2 = st.columns([1, 4])
 
 with col1:
-    st.image("assets/FUNASA_LOGO.jpeg", width=120)
+    st.image("FUNASA_LOGO.jpeg", width=120)
 
 with col2:
     st.title("Mapa de Unidades SALTA")
