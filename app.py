@@ -53,12 +53,12 @@ df = carregar_dados()
 # -------------------------------
 df.columns = df.columns.str.upper()
 
+df.columns = df.columns.str.upper().str.strip()
+
+df = df.rename(columns=lambda x: x.replace("_X", "").replace("_Y", "_REF"))
+
 df['FUNCIONANDO'] = df['FUNCIONANDO'].astype(str).str.lower()
 df['SITUAÇÃO'] = df['SITUAÇÃO'].astype(str).str.upper()
-df = df.rename(columns={
-    "ESTADO_x": "ESTADO",
-    "MUNICIPIO_x": "MUNICIPIO"
-})
 # -------------------------------
 # FILTRO ESTADOS
 # -------------------------------
