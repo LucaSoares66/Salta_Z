@@ -1,187 +1,137 @@
 import streamlit as st
 import pandas as pd
+import boto3
+import io
 import folium
 from streamlit_folium import st_folium
 
-# =========================
-# 🔹 CONFIG
-# =========================
+# -------------------------------
+# CONFIG
+# -------------------------------
 st.set_page_config(layout="wide")
-st.title("📍 Mapa de Comunidades - SALTA")
 
-# =========================
-# 🔹 LOAD
-# =========================
+# -------------------------------
+# HEADER
+# -------------------------------
+st.image("header.png", use_container_width=True)
+st.title("📍 Mapa de Unidades SALTA")
+
+# -------------------------------
+# FUNÇÃO PARA CARREGAR DADOS DO S3
+# -------------------------------
 @st.cache_data
-def load_data():
-    df = pd.read_excel("PLANILHA_SALTAZ_GEODCODIFICADA.xlsx")
-    return df
-
-df = load_data()
-
-# =========================
-# 🔹 LIMPEZA
-# =========================
-df = df.dropna(subset=["lat", "lon"])
-
-df["FUNCIONANDO"] = (
-    df["FUNCIONANDO"]
-    .fillna("SEM INFORMAÇÃO")
-    .astype(str)
-    .str.upper()
-    .str.strip()
-)
-
-df["SITUAÇÃO"] = (
-    df["SITUAÇÃO"]
-    .fillna("SEM INFORMAÇÃO")
-    .astype(str)
-    .str.upper()
-    .str.strip()
-)
-
-df["ESTADO"] = df["ESTADO"].astype(str).str.upper()
-df["COMUNIDADE"] = df["COMUNIDADE"].astype(str).str.upper()
-
-# =========================
-# 🔹 DASHBOARD (AGORA FUNCIONANDO)
-# =========================
-st.subheader("Quantidade por Funcionamento")
-
-contagem_func = df["FUNCIONANDO"].value_counts()
-cols = st.columns(len(contagem_func))
-
-def cor_funcionando(func):
-    if func == "SIM":
-        return "blue"
-    elif func == "NÃO":
-        return "red"
-    else:
-        return "gray"
-
-for i, (func, val) in enumerate(contagem_func.items()):
-    cols[i].markdown(
-        f"<h3 style='color:{cor_funcionando(func)}'>{val}</h3><p>{func}</p>",
-        unsafe_allow_html=True
+def carregar_dados():
+    s3 = boto3.client(
+        "s3",
+        aws_access_key_id=st.secrets["AWS_ACCESS_KEY_ID"],
+        aws_secret_access_key=st.secrets["AWS_SECRET_ACCESS_KEY"],
+        region_name=st.secrets["AWS_DEFAULT_REGION"]
     )
 
-# =========================
-# 🔹 FILTROS
-# =========================
-col1, col2, col3 = st.columns(3)
+    obj = s3.get_object(
+        Bucket=st.secrets["BUCKET_NAME"],
+        Key=st.secrets["FILE_KEY"]
+    )
 
-# SITUAÇÃO (mantido como filtro, mas sem dashboard)
-situacoes = ["TODOS"] + sorted(df["SITUAÇÃO"].unique())
-filtro_situacao = col1.selectbox("Situação:", situacoes)
+    df = pd.read_csv(io.BytesIO(obj["Body"].read()))
+    return df
 
-# ESTADO
-estados = ["TODOS"] + sorted(df["ESTADO"].unique())
-filtro_estado = col2.selectbox("Estado:", estados)
+# -------------------------------
+# LOAD DATA
+# -------------------------------
+df = carregar_dados()
 
-# COMUNIDADE
-df_temp = df.copy()
+# -------------------------------
+# LIMPEZA / PADRONIZAÇÃO
+# -------------------------------
+df.columns = df.columns.str.upper()
 
-if filtro_estado != "TODOS":
-    df_temp = df_temp[df_temp["ESTADO"] == filtro_estado]
+# Garantir consistência
+df['FUNCIONANDO'] = df['FUNCIONANDO'].astype(str).str.lower()
 
-comunidades = ["TODOS"] + sorted(df_temp["COMUNIDADE"].unique())
-filtro_comunidade = col3.selectbox("Comunidade:", comunidades)
+# Remover estados
+df = df[~df['ESTADO'].isin(['AP', 'PA', 'AC'])]
 
-# =========================
-# 🔹 APLICAR FILTROS
-# =========================
-df_filtrado = df.copy()
+# -------------------------------
+# SIDEBAR FILTROS
+# -------------------------------
+st.sidebar.header("Filtros")
 
-if filtro_situacao != "TODOS":
-    df_filtrado = df_filtrado[df_filtrado["SITUAÇÃO"] == filtro_situacao]
-
-if filtro_estado != "TODOS":
-    df_filtrado = df_filtrado[df_filtrado["ESTADO"] == filtro_estado]
-
-if filtro_comunidade != "TODOS":
-    df_filtrado = df_filtrado[df_filtrado["COMUNIDADE"] == filtro_comunidade]
-
-# =========================
-# 🔹 MAPA
-# =========================
-mapa = folium.Map(
-    location=[-14, -52],
-    zoom_start=4,
-    prefer_canvas=True
+filtro_funcionando = st.sidebar.selectbox(
+    "Funcionando?",
+    options=["todos", "sim", "nao"]
 )
 
-def get_color(func, situacao):
-    if situacao == "SEM INFORMAÇÃO":
+if filtro_funcionando != "todos":
+    df = df[df['FUNCIONANDO'] == filtro_funcionando]
+
+# -------------------------------
+# CORES POR SITUAÇÃO
+# -------------------------------
+cores = {
+    "ATIVO": "green",
+    "INATIVO": "red",
+    "MANUTENCAO": "orange"
+}
+
+def get_color(situacao):
+    if pd.isna(situacao):
         return "gray"
-    elif func == "SIM":
-        return "blue"
-    elif func == "NÃO":
-        return "red"
-    return "gray"
+    return cores.get(situacao.upper(), "blue")
 
-# =========================
-# 🔹 PLOTAR PONTOS
-# =========================
-for _, row in df_filtrado.iterrows():
+# -------------------------------
+# MAPA
+# -------------------------------
+mapa = folium.Map(
+    location=[-14.2350, -51.9253],
+    zoom_start=4
+)
 
-    tooltip = f"{row['ESTADO']} - {row['COMUNIDADE']}"
+# -------------------------------
+# MARCADORES
+# -------------------------------
+for _, row in df.iterrows():
+    if pd.notna(row["LAT"]) and pd.notna(row["LON"]):
+        folium.CircleMarker(
+            location=[row["LAT"], row["LON"]],
+            radius=5,
+            color=get_color(row["SITUACAO"]),
+            fill=True,
+            fill_opacity=0.7,
+            popup=f"""
+            <b>Estado:</b> {row['ESTADO']}<br>
+            <b>Situação:</b> {row['SITUACAO']}<br>
+            <b>Funcionando:</b> {row['FUNCIONANDO']}
+            """
+        ).add_to(mapa)
 
-    popup = f"""
-    <b>Comunidade:</b> {row['COMUNIDADE']}<br>
-    <b>Município:</b> {row['MUNICIPIO']}<br>
-    <b>Estado:</b> {row['ESTADO']}<br>
-    <b>Situação:</b> {row['SITUAÇÃO']}<br>
-    <b>Funcionando:</b> {row['FUNCIONANDO']}
-    """
-
-    folium.CircleMarker(
-        location=[row["lat"], row["lon"]],
-        radius=5,
-        color=get_color(row["FUNCIONANDO"], row["SITUAÇÃO"]),
-        fill=True,
-        fill_color=get_color(row["FUNCIONANDO"], row["SITUAÇÃO"]),
-        fill_opacity=0.7,
-        tooltip=tooltip,
-        popup=popup
-    ).add_to(mapa)
-
-# =========================
-# 🔹 AUTO ZOOM
-# =========================
-coords = df_filtrado[["lat", "lon"]].values.tolist()
-if coords:
-    mapa.fit_bounds(coords)
-
-# =========================
-# 🔹 LEGENDA (FUNCIONANDO)
-# =========================
-contagem_legenda = df_filtrado["FUNCIONANDO"].value_counts()
-
-html_legenda = """
+# -------------------------------
+# LEGENDA
+# -------------------------------
+legend_html = """
 <div style="
-position: fixed; 
-bottom: 50px; left: 50px; width: 220px; 
-background-color: white; 
-border:2px solid grey; 
-z-index:9999; 
+position: fixed;
+bottom: 50px;
+left: 50px;
+width: 200px;
+height: 130px;
+background-color: white;
+border:2px solid grey;
+z-index:9999;
 font-size:14px;
 padding: 10px;
 ">
-<b>Funcionamento</b><br>
+<b>Legenda</b><br>
+<i style="color:green;">●</i> Ativo<br>
+<i style="color:red;">●</i> Inativo<br>
+<i style="color:orange;">●</i> Manutenção<br>
+<i style="color:blue;">●</i> Outros
+</div>
 """
 
-for func, val in contagem_legenda.items():
-    cor = cor_funcionando(func)
-    html_legenda += f"""
-    <i style="background:{cor};width:10px;height:10px;display:inline-block;margin-right:5px;"></i>
-    {func}: {val}<br>
-    """
+mapa.get_root().html.add_child(folium.Element(legend_html))
 
-html_legenda += "</div>"
-
-mapa.get_root().html.add_child(folium.Element(html_legenda))
-
-# =========================
-# 🔹 RENDER
-# =========================
-st_folium(mapa, width=1200, height=600)
+# -------------------------------
+# MOSTRAR MAPA
+# -------------------------------
+st_folium(mapa, use_container_width=True)
