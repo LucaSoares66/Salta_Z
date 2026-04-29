@@ -11,13 +11,18 @@ from streamlit_folium import st_folium
 st.set_page_config(layout="wide")
 
 # -------------------------------
-# HEADER
+# HEADER (LAYOUT LADO A LADO)
 # -------------------------------
-st.image("FUNASA - LOGO.jpeg", use_container_width=True)
-st.title("📍 Mapa de Unidades SALTA")
+col1, col2 = st.columns([1, 4])
+
+with col1:
+    st.image("assets/FUNASA - LOGO.png", width=120)
+
+with col2:
+    st.title("Mapa de Unidades SALTA")
 
 # -------------------------------
-# FUNÇÃO PARA CARREGAR DADOS DO S3
+# FUNÇÃO PARA CARREGAR DADOS DO S3 (EXCEL)
 # -------------------------------
 @st.cache_data
 def carregar_dados():
@@ -33,7 +38,8 @@ def carregar_dados():
         Key=st.secrets["FILE_KEY"]
     )
 
-    df = pd.read_csv(io.BytesIO(obj["Body"].read()))
+    # 🔥 LENDO EXCEL
+    df = pd.read_excel(io.BytesIO(obj["Body"].read()))
     return df
 
 # -------------------------------
@@ -42,18 +48,20 @@ def carregar_dados():
 df = carregar_dados()
 
 # -------------------------------
-# LIMPEZA / PADRONIZAÇÃO
+# PADRONIZAÇÃO
 # -------------------------------
 df.columns = df.columns.str.upper()
 
-# Garantir consistência
 df['FUNCIONANDO'] = df['FUNCIONANDO'].astype(str).str.lower()
+df['SITUACAO'] = df['SITUACAO'].astype(str).str.upper()
 
-# Remover estados
+# -------------------------------
+# FILTRO ESTADOS
+# -------------------------------
 df = df[~df['ESTADO'].isin(['AP', 'PA', 'AC'])]
 
 # -------------------------------
-# SIDEBAR FILTROS
+# SIDEBAR
 # -------------------------------
 st.sidebar.header("Filtros")
 
@@ -66,7 +74,7 @@ if filtro_funcionando != "todos":
     df = df[df['FUNCIONANDO'] == filtro_funcionando]
 
 # -------------------------------
-# CORES POR SITUAÇÃO
+# CORES
 # -------------------------------
 cores = {
     "ATIVO": "green",
@@ -77,7 +85,7 @@ cores = {
 def get_color(situacao):
     if pd.isna(situacao):
         return "gray"
-    return cores.get(situacao.upper(), "blue")
+    return cores.get(situacao, "blue")
 
 # -------------------------------
 # MAPA
