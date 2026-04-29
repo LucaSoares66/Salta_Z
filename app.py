@@ -59,7 +59,7 @@ df['SITUAÇÃO'] = df['SITUAÇÃO'].astype(str).str.upper()
 # -------------------------------
 # FILTRO ESTADOS
 # -------------------------------
-df = df[~df['ESTADO'].isin(['AP', 'PA', 'AC'])]
+df = df[~df['ESTADO_x'].isin(['AP', 'PA', 'AC'])]
 
 # -------------------------------
 # SIDEBAR
@@ -108,7 +108,7 @@ for _, row in df.iterrows():
             fill=True,
             fill_opacity=0.7,
             popup=f"""
-            <b>Estado:</b> {row['ESTADO']}<br>
+            <b>Estado:</b> {row['ESTADO_x']}<br>
             <b>Situação:</b> {row['SITUAÇÃO']}<br>
             <b>Funcionando:</b> {row['FUNCIONANDO']}
             """
