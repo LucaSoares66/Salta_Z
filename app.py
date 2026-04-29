@@ -127,9 +127,11 @@ if filtro_func != "todos":
 # CORES
 # -------------------------------
 cores = {
-    "OPERANDO NORMALMENTE": "green",
-    "SISTEMA COM FALTA MANUTENCAO E MONITORAMENTO": "red",
-    "MANUTENCAO": "orange"
+    "OPERANDO NORMALMENTE": "#2ECC71",      # verde
+    "Sem informação desde 2022": "#95A5A6", # cinza
+    "O sistema não está em operação, segundo informações repassadas pela Prefeitura as estruturas das torres, por terem sido feitas em madeira, apresentaram problemas estruturais ao longo do tempo, bem como a própria comunidade teve dificuldades em estabelecer uma rotina na operacionalização dos sistemas, sendo esse fator agravado pelo período em que a Funasa foi afetada pela Medida Provisória nº 1.156, de 1º de janeiro de 2023. Assim, como solução a Prefeitura adotou providência em prover as comunidades com poços artesianos, sendo essa forma de abastecimento de água nas comunidads atualmente. Solicitamos informações sobre os equipamentos de SALTA-Z e nos informaram que alguns ainda estão nas comunidadesmas serão retirados pela Prefeitura de CRodrigues Alves para verificação de uma possível realucação.": "#E74C3C",  # vermelho
+    "Sem informação, equipe do município em recesso.": "#F39C12",  # laranja
+    "FUNCIONANDO PERFEITAMENTE": "#3498DB"  # azul
 }
 
 def get_color(situacao):
