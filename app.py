@@ -4,6 +4,8 @@ import boto3
 import io
 import folium
 from streamlit_folium import st_folium
+import random
+import unicodedata
 
 # -------------------------------
 # CONFIG
@@ -47,7 +49,7 @@ def carregar_dados():
 df = carregar_dados()
 
 # -------------------------------
-# LIMPEZA DE COLUNAS (ROBUSTA)
+# LIMPEZA DE COLUNAS
 # -------------------------------
 df.columns = (
     df.columns
@@ -61,11 +63,11 @@ df.columns = (
 # remove duplicadas
 df = df.loc[:, ~df.columns.duplicated()]
 
-# remove sufixos _X e _Y
+# remove sufixos
 df = df.rename(columns=lambda x: x.replace("_X", "").replace("_Y", "_REF"))
 
 # -------------------------------
-# GARANTIR COLUNAS IMPORTANTES
+# ENCONTRAR COLUNAS
 # -------------------------------
 def encontrar_coluna(df, nomes):
     for col in df.columns:
@@ -80,26 +82,32 @@ col_lon = encontrar_coluna(df, ["LON"])
 col_func = encontrar_coluna(df, ["FUNCIONANDO"])
 col_sit = encontrar_coluna(df, ["SITUACAO"])
 
-if None in [col_estado, col_lat, col_lon]:
+if None in [col_estado, col_lat, col_lon, col_sit]:
     st.error("Colunas essenciais não encontradas")
     st.write(df.columns)
     st.stop()
 
 # -------------------------------
-# PADRONIZAÇÃO DE DADOS
+# NORMALIZAÇÃO
 # -------------------------------
-df[col_func] = df[col_func].astype(str).str.lower()
-df[col_sit] = df[col_sit].astype(str).str.upper()
+def normalizar(texto):
+    if pd.isna(texto):
+        return None
+    texto = str(texto).strip().lower()
+    texto = unicodedata.normalize('NFKD', texto).encode('ascii', 'ignore').decode('utf-8')
+    return texto
+
+df[col_func] = df[col_func].apply(normalizar)
+df[col_sit] = df[col_sit].astype(str).str.strip().str.upper()
 
 # -------------------------------
-# CONVERTER LAT/LON
+# LAT/LON
 # -------------------------------
 df[col_lat] = pd.to_numeric(df[col_lat], errors="coerce")
 df[col_lon] = pd.to_numeric(df[col_lon], errors="coerce")
 
 df = df.dropna(subset=[col_lat, col_lon])
 
-# filtra valores válidos
 df = df[
     (df[col_lat].between(-90, 90)) &
     (df[col_lon].between(-180, 180))
@@ -117,27 +125,23 @@ st.sidebar.header("Filtros")
 
 filtro_func = st.sidebar.selectbox(
     "Funcionando?",
-    ["todos", "sim", "não"]
+    ["todos", "sim", "nao"]
 )
 
 if filtro_func != "todos":
     df = df[df[col_func] == filtro_func]
 
 # -------------------------------
-# CORES
+# CORES DINÂMICAS
 # -------------------------------
-cores = {
-    "OPERANDO NORMALMENTE": "#2ECC71",      # verde
-    "Sem informação desde 2022": "#95A5A6", # cinza
-    "O sistema não está em operação, segundo informações repassadas pela Prefeitura as estruturas das torres, por terem sido feitas em madeira, apresentaram problemas estruturais ao longo do tempo, bem como a própria comunidade teve dificuldades em estabelecer uma rotina na operacionalização dos sistemas, sendo esse fator agravado pelo período em que a Funasa foi afetada pela Medida Provisória nº 1.156, de 1º de janeiro de 2023. Assim, como solução a Prefeitura adotou providência em prover as comunidades com poços artesianos, sendo essa forma de abastecimento de água nas comunidads atualmente. Solicitamos informações sobre os equipamentos de SALTA-Z e nos informaram que alguns ainda estão nas comunidadesmas serão retirados pela Prefeitura de CRodrigues Alves para verificação de uma possível realucação.": "#E74C3C",  # vermelho
-    "Sem informação, equipe do município em recesso.": "#F39C12",  # laranja
-    "FUNCIONANDO PERFEITAMENTE": "#3498DB"  # azul
-}
+def gerar_cor():
+    return "#{:06x}".format(random.randint(0, 0xFFFFFF))
+
+situacoes_unicas = df[col_sit].dropna().unique()
+cores = {sit: gerar_cor() for sit in situacoes_unicas}
 
 def get_color(situacao):
-    if pd.isna(situacao):
-        return "gray"
-    return cores.get(situacao, "blue")
+    return cores.get(situacao, "#000000")
 
 # -------------------------------
 # MAPA
@@ -148,7 +152,7 @@ mapa = folium.Map(
 )
 
 # -------------------------------
-# MARCADORES (SEM ITERROWS LENTO)
+# MARCADORES
 # -------------------------------
 for lat, lon, estado, sit, func in zip(
     df[col_lat],
@@ -171,32 +175,22 @@ for lat, lon, estado, sit, func in zip(
     ).add_to(mapa)
 
 # -------------------------------
-# LEGENDA
-# -------------------------------
-legend_html = """
-<div style="
-position: fixed;
-bottom: 50px;
-left: 50px;
-width: 220px;
-height: 140px;
-background-color: white;
-border:2px solid grey;
-z-index:9999;
-font-size:14px;
-padding: 10px;
-">
-<b>Legenda</b><br>
-<i style="color:green;">●</i> Operando normalmente<br>
-<i style="color:red;">●</i> Problema / Inativo<br>
-<i style="color:orange;">●</i> Manutenção<br>
-<i style="color:blue;">●</i> Outros
-</div>
-"""
-
-mapa.get_root().html.add_child(folium.Element(legend_html))
-
-# -------------------------------
-# OUTPUT
+# OUTPUT MAPA
 # -------------------------------
 st_folium(mapa, use_container_width=True)
+
+# -------------------------------
+# LEGENDA FORA DO MAPA
+# -------------------------------
+st.subheader("Legenda")
+
+cols = st.columns(3)
+
+for i, (sit, cor) in enumerate(cores.items()):
+    nome_curto = sit[:60] + "..." if len(sit) > 60 else sit
+
+    with cols[i % 3]:
+        st.markdown(
+            f"<span style='color:{cor}; font-size:20px;'>●</span> {nome_curto}",
+            unsafe_allow_html=True
+        )
