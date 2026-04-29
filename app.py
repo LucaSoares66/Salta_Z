@@ -5,6 +5,7 @@ import io
 import folium
 from streamlit_folium import st_folium
 
+
 # -------------------------------
 # CONFIG
 # -------------------------------
@@ -53,7 +54,7 @@ df = carregar_dados()
 df.columns = df.columns.str.upper()
 
 df['FUNCIONANDO'] = df['FUNCIONANDO'].astype(str).str.lower()
-df['SITUACAO'] = df['SITUACAO'].astype(str).str.upper()
+df['SITUAÇãO'] = df['SITUAÇãO'].astype(str).str.upper()
 
 # -------------------------------
 # FILTRO ESTADOS
