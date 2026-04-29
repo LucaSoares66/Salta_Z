@@ -13,7 +13,7 @@ st.set_page_config(layout="wide")
 # -------------------------------
 # HEADER
 # -------------------------------
-st.image("header.png", use_container_width=True)
+st.image("FUNASA - LOGO.jpeg", use_container_width=True)
 st.title("📍 Mapa de Unidades SALTA")
 
 # -------------------------------
