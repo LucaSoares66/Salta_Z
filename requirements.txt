@@ -2,6 +2,5 @@ streamlit
 pandas
 folium
 streamlit-folium
-openpyxl
-io
 boto3
+openpyxl
