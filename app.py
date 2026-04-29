@@ -55,11 +55,14 @@ df.columns = df.columns.str.upper()
 
 df['FUNCIONANDO'] = df['FUNCIONANDO'].astype(str).str.lower()
 df['SITUAÇÃO'] = df['SITUAÇÃO'].astype(str).str.upper()
-
+df = df.rename(columns={
+    "ESTADO_x": "ESTADO",
+    "MUNICIPIO_x": "MUNICIPIO"
+})
 # -------------------------------
 # FILTRO ESTADOS
 # -------------------------------
-df = df[~df['ESTADO_x'].isin(['AP', 'PA', 'AC'])]
+df = df[~df['ESTADO'].isin(['AP', 'PA', 'AC'])]
 
 # -------------------------------
 # SIDEBAR
@@ -108,7 +111,7 @@ for _, row in df.iterrows():
             fill=True,
             fill_opacity=0.7,
             popup=f"""
-            <b>Estado:</b> {row['ESTADO_x']}<br>
+            <b>Estado:</b> {row['ESTADO']}<br>
             <b>Situação:</b> {row['SITUAÇÃO']}<br>
             <b>Funcionando:</b> {row['FUNCIONANDO']}
             """
