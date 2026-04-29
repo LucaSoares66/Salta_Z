@@ -51,6 +51,8 @@ df = carregar_dados()
 # -------------------------------
 # PADRONIZAÇÃO
 # -------------------------------
+df = df.drop(columns=["lat", "lon"], errors="ignore")
+
 df.columns = df.columns.str.upper()
 
 df.columns = df.columns.str.upper().str.strip()
