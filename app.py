@@ -5,25 +5,24 @@ import io
 import folium
 from streamlit_folium import st_folium
 
-
 # -------------------------------
 # CONFIG
 # -------------------------------
 st.set_page_config(layout="wide")
 
 # -------------------------------
-# HEADER (LAYOUT LADO A LADO)
+# HEADER
 # -------------------------------
 col1, col2 = st.columns([1, 4])
 
 with col1:
-    st.image("FUNASA_LOGO.jpeg", width=120)
+    st.image("FUNASA_LOGO.jpeg", width=100)
 
 with col2:
     st.title("Mapa de Unidades SALTA")
 
 # -------------------------------
-# FUNÇÃO PARA CARREGAR DADOS DO S3 (EXCEL)
+# FUNÇÃO S3
 # -------------------------------
 @st.cache_data
 def carregar_dados():
@@ -39,52 +38,97 @@ def carregar_dados():
         Key=st.secrets["FILE_KEY"]
     )
 
-    # 🔥 LENDO EXCEL
     df = pd.read_excel(io.BytesIO(obj["Body"].read()))
     return df
 
 # -------------------------------
-# LOAD DATA
+# LOAD
 # -------------------------------
 df = carregar_dados()
 
 # -------------------------------
-# PADRONIZAÇÃO
+# LIMPEZA DE COLUNAS (ROBUSTA)
 # -------------------------------
-df = df.drop(columns=["lat", "lon"], errors="ignore")
+df.columns = (
+    df.columns
+    .str.strip()
+    .str.upper()
+    .str.normalize('NFKD')
+    .str.encode('ascii', errors='ignore')
+    .str.decode('utf-8')
+)
 
-df.columns = df.columns.str.upper()
+# remove duplicadas
+df = df.loc[:, ~df.columns.duplicated()]
 
-df.columns = df.columns.str.upper().str.strip()
-
+# remove sufixos _X e _Y
 df = df.rename(columns=lambda x: x.replace("_X", "").replace("_Y", "_REF"))
 
-df['FUNCIONANDO'] = df['FUNCIONANDO'].astype(str).str.lower()
-df['SITUAÇÃO'] = df['SITUAÇÃO'].astype(str).str.upper()
+# -------------------------------
+# GARANTIR COLUNAS IMPORTANTES
+# -------------------------------
+def encontrar_coluna(df, nomes):
+    for col in df.columns:
+        for nome in nomes:
+            if nome in col:
+                return col
+    return None
+
+col_estado = encontrar_coluna(df, ["ESTADO", "UF"])
+col_lat = encontrar_coluna(df, ["LAT"])
+col_lon = encontrar_coluna(df, ["LON"])
+col_func = encontrar_coluna(df, ["FUNCIONANDO"])
+col_sit = encontrar_coluna(df, ["SITUACAO"])
+
+if None in [col_estado, col_lat, col_lon]:
+    st.error("Colunas essenciais não encontradas")
+    st.write(df.columns)
+    st.stop()
+
+# -------------------------------
+# PADRONIZAÇÃO DE DADOS
+# -------------------------------
+df[col_func] = df[col_func].astype(str).str.lower()
+df[col_sit] = df[col_sit].astype(str).str.upper()
+
+# -------------------------------
+# CONVERTER LAT/LON
+# -------------------------------
+df[col_lat] = pd.to_numeric(df[col_lat], errors="coerce")
+df[col_lon] = pd.to_numeric(df[col_lon], errors="coerce")
+
+df = df.dropna(subset=[col_lat, col_lon])
+
+# filtra valores válidos
+df = df[
+    (df[col_lat].between(-90, 90)) &
+    (df[col_lon].between(-180, 180))
+]
+
 # -------------------------------
 # FILTRO ESTADOS
 # -------------------------------
-df = df[~df['ESTADO'].isin(['AP', 'PA', 'AC'])]
+df = df[~df[col_estado].isin(['AP', 'PA', 'AC'])]
 
 # -------------------------------
 # SIDEBAR
 # -------------------------------
 st.sidebar.header("Filtros")
 
-filtro_funcionando = st.sidebar.selectbox(
+filtro_func = st.sidebar.selectbox(
     "Funcionando?",
-    options=["todos", "sim", "nao"]
+    ["todos", "sim", "nao"]
 )
 
-if filtro_funcionando != "todos":
-    df = df[df['FUNCIONANDO'] == filtro_funcionando]
+if filtro_func != "todos":
+    df = df[df[col_func] == filtro_func]
 
 # -------------------------------
 # CORES
 # -------------------------------
 cores = {
-    "ATIVO": "green",
-    "INATIVO": "red",
+    "OPERANDO NORMALMENTE": "green",
+    "SISTEMA COM FALTA MANUTENCAO E MONITORAMENTO": "red",
     "MANUTENCAO": "orange"
 }
 
@@ -102,22 +146,27 @@ mapa = folium.Map(
 )
 
 # -------------------------------
-# MARCADORES
+# MARCADORES (SEM ITERROWS LENTO)
 # -------------------------------
-for _, row in df.iterrows():
-    if pd.notna(row["LAT"]) and pd.notna(row["LON"]):
-        folium.CircleMarker(
-            location=[row["LAT"], row["LON"]],
-            radius=5,
-            color=get_color(row["SITUAÇÃO"]),
-            fill=True,
-            fill_opacity=0.7,
-            popup=f"""
-            <b>Estado:</b> {row['ESTADO']}<br>
-            <b>Situação:</b> {row['SITUAÇÃO']}<br>
-            <b>Funcionando:</b> {row['FUNCIONANDO']}
-            """
-        ).add_to(mapa)
+for lat, lon, estado, sit, func in zip(
+    df[col_lat],
+    df[col_lon],
+    df[col_estado],
+    df[col_sit],
+    df[col_func]
+):
+    folium.CircleMarker(
+        location=[lat, lon],
+        radius=5,
+        color=get_color(sit),
+        fill=True,
+        fill_opacity=0.7,
+        popup=f"""
+        <b>Estado:</b> {estado}<br>
+        <b>Situação:</b> {sit}<br>
+        <b>Funcionando:</b> {func}
+        """
+    ).add_to(mapa)
 
 # -------------------------------
 # LEGENDA
@@ -127,8 +176,8 @@ legend_html = """
 position: fixed;
 bottom: 50px;
 left: 50px;
-width: 200px;
-height: 130px;
+width: 220px;
+height: 140px;
 background-color: white;
 border:2px solid grey;
 z-index:9999;
@@ -136,8 +185,8 @@ font-size:14px;
 padding: 10px;
 ">
 <b>Legenda</b><br>
-<i style="color:green;">●</i> Ativo<br>
-<i style="color:red;">●</i> Inativo<br>
+<i style="color:green;">●</i> Operando normalmente<br>
+<i style="color:red;">●</i> Problema / Inativo<br>
 <i style="color:orange;">●</i> Manutenção<br>
 <i style="color:blue;">●</i> Outros
 </div>
@@ -146,6 +195,6 @@ padding: 10px;
 mapa.get_root().html.add_child(folium.Element(legend_html))
 
 # -------------------------------
-# MOSTRAR MAPA
+# OUTPUT
 # -------------------------------
 st_folium(mapa, use_container_width=True)
