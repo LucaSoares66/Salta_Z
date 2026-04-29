@@ -3,9 +3,8 @@ import pandas as pd
 import boto3
 import io
 import folium
-from streamlit_folium import st_folium
 import random
-import unicodedata
+from streamlit_folium import st_folium
 
 # -------------------------------
 # CONFIG
@@ -60,14 +59,11 @@ df.columns = (
     .str.decode('utf-8')
 )
 
-# remove duplicadas
 df = df.loc[:, ~df.columns.duplicated()]
-
-# remove sufixos
 df = df.rename(columns=lambda x: x.replace("_X", "").replace("_Y", "_REF"))
 
 # -------------------------------
-# ENCONTRAR COLUNAS
+# DETECTAR COLUNAS
 # -------------------------------
 def encontrar_coluna(df, nomes):
     for col in df.columns:
@@ -82,27 +78,12 @@ col_lon = encontrar_coluna(df, ["LON"])
 col_func = encontrar_coluna(df, ["FUNCIONANDO"])
 col_sit = encontrar_coluna(df, ["SITUACAO"])
 
-if None in [col_estado, col_lat, col_lon, col_sit]:
-    st.error("Colunas essenciais não encontradas")
-    st.write(df.columns)
-    st.stop()
+# -------------------------------
+# TRATAMENTO
+# -------------------------------
+df[col_func] = df[col_func].astype(str).str.lower()
+df[col_sit] = df[col_sit].astype(str).str.strip()
 
-# -------------------------------
-# NORMALIZAÇÃO
-# -------------------------------
-def normalizar(texto):
-    if pd.isna(texto):
-        return None
-    texto = str(texto).strip().lower()
-    texto = unicodedata.normalize('NFKD', texto).encode('ascii', 'ignore').decode('utf-8')
-    return texto
-
-df[col_func] = df[col_func].apply(normalizar)
-df[col_sit] = df[col_sit].astype(str).str.strip().str.upper()
-
-# -------------------------------
-# LAT/LON
-# -------------------------------
 df[col_lat] = pd.to_numeric(df[col_lat], errors="coerce")
 df[col_lon] = pd.to_numeric(df[col_lon], errors="coerce")
 
@@ -114,7 +95,7 @@ df = df[
 ]
 
 # -------------------------------
-# FILTRO ESTADOS
+# FILTRO
 # -------------------------------
 df = df[~df[col_estado].isin(['AP', 'PA', 'AC'])]
 
@@ -125,31 +106,32 @@ st.sidebar.header("Filtros")
 
 filtro_func = st.sidebar.selectbox(
     "Funcionando?",
-    ["todos", "sim", "nao"]
+    ["todos", "sim", "não"]
 )
 
 if filtro_func != "todos":
     df = df[df[col_func] == filtro_func]
 
 # -------------------------------
-# CORES DINÂMICAS
+# CORES FIXAS (IMPORTANTE)
 # -------------------------------
-def gerar_cor():
-    return "#{:06x}".format(random.randint(0, 0xFFFFFF))
+situacoes = sorted(df[col_sit].dropna().unique())
 
-situacoes_unicas = df[col_sit].dropna().unique()
-cores = {sit: gerar_cor() for sit in situacoes_unicas}
+if "cores_mapa" not in st.session_state:
+    cores = {}
+    for sit in situacoes:
+        cores[sit] = "#{:06x}".format(random.randint(0, 0xFFFFFF))
+    st.session_state.cores_mapa = cores
+
+cores = st.session_state.cores_mapa
 
 def get_color(situacao):
-    return cores.get(situacao, "#000000")
+    return cores.get(situacao, "#999999")
 
 # -------------------------------
 # MAPA
 # -------------------------------
-mapa = folium.Map(
-    location=[-14.2350, -51.9253],
-    zoom_start=4
-)
+mapa = folium.Map(location=[-14.2350, -51.9253], zoom_start=4)
 
 # -------------------------------
 # MARCADORES
@@ -175,22 +157,23 @@ for lat, lon, estado, sit, func in zip(
     ).add_to(mapa)
 
 # -------------------------------
-# OUTPUT MAPA
+# MOSTRAR MAPA
 # -------------------------------
 st_folium(mapa, use_container_width=True)
 
 # -------------------------------
 # LEGENDA FORA DO MAPA
 # -------------------------------
-st.subheader("Legenda")
+st.markdown("### Legenda")
 
-cols = st.columns(3)
+for sit, cor in cores.items():
+    nome = sit
 
-for i, (sit, cor) in enumerate(cores.items()):
-    nome_curto = sit[:60] + "..." if len(sit) > 60 else sit
+    # simplificar texto longo
+    if "não está em operação" in sit.lower():
+        nome = "Sistema não está em operação"
 
-    with cols[i % 3]:
-        st.markdown(
-            f"<span style='color:{cor}; font-size:20px;'>●</span> {nome_curto}",
-            unsafe_allow_html=True
-        )
+    st.markdown(
+        f"<span style='color:{cor}; font-size:18px;'>●</span> {nome}",
+        unsafe_allow_html=True
+    )
