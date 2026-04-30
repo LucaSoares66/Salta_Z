@@ -47,133 +47,180 @@ def carregar_dados():
 # -------------------------------
 df = carregar_dados()
 
-# -------------------------------
-# LIMPEZA DE COLUNAS
-# -------------------------------
-df.columns = (
-    df.columns
-    .str.strip()
+import streamlit as st
+import pandas as pd
+import folium
+from streamlit_folium import st_folium
+
+# =========================
+# 🔹 CONFIG
+# =========================
+st.set_page_config(layout="wide")
+st.title("📍 Mapa de Comunidades - SALTA")
+
+# =========================
+# 🔹 LIMPEZA
+# =========================
+df = df.dropna(subset=["lat", "lon"])
+
+df["FUNCIONANDO"] = (
+    df["FUNCIONANDO"]
+    .fillna("SEM INFORMAÇÃO")
+    .astype(str)
     .str.upper()
-    .str.normalize('NFKD')
-    .str.encode('ascii', errors='ignore')
-    .str.decode('utf-8')
+    .str.strip()
 )
 
-df = df.loc[:, ~df.columns.duplicated()]
-df = df.rename(columns=lambda x: x.replace("_X", "").replace("_Y", "_REF"))
-
-# -------------------------------
-# DETECTAR COLUNAS
-# -------------------------------
-def encontrar_coluna(df, nomes):
-    for col in df.columns:
-        for nome in nomes:
-            if nome in col:
-                return col
-    return None
-
-col_estado = encontrar_coluna(df, ["ESTADO", "UF"])
-col_lat = encontrar_coluna(df, ["LAT"])
-col_lon = encontrar_coluna(df, ["LON"])
-col_func = encontrar_coluna(df, ["FUNCIONANDO"])
-col_sit = encontrar_coluna(df, ["SITUACAO"])
-
-# -------------------------------
-# TRATAMENTO
-# -------------------------------
-df[col_func] = df[col_func].astype(str).str.lower()
-df[col_sit] = df[col_sit].astype(str).str.strip()
-
-df[col_lat] = pd.to_numeric(df[col_lat], errors="coerce")
-df[col_lon] = pd.to_numeric(df[col_lon], errors="coerce")
-
-df = df.dropna(subset=[col_lat, col_lon])
-
-df = df[
-    (df[col_lat].between(-90, 90)) &
-    (df[col_lon].between(-180, 180))
-]
-
-# -------------------------------
-# FILTRO
-# -------------------------------
-df = df[~df[col_estado].isin(['AP', 'PA', 'AC'])]
-
-# -------------------------------
-# SIDEBAR
-# -------------------------------
-st.sidebar.header("Filtros")
-
-filtro_func = st.sidebar.selectbox(
-    "Funcionando?",
-    ["todos", "sim", "não"]
+df["SITUAÇÃO"] = (
+    df["SITUAÇÃO"]
+    .fillna("SEM INFORMAÇÃO")
+    .astype(str)
+    .str.upper()
+    .str.strip()
 )
 
-if filtro_func != "todos":
-    df = df[df[col_func] == filtro_func]
+df["ESTADO"] = df["ESTADO"].astype(str).str.upper()
+df["COMUNIDADE"] = df["COMUNIDADE"].astype(str).str.upper()
 
-# -------------------------------
-# CORES FIXAS (IMPORTANTE)
-# -------------------------------
-situacoes = sorted(df[col_sit].dropna().unique())
+# =========================
+# 🔹 DASHBOARD (AGORA FUNCIONANDO)
+# =========================
+st.subheader("Quantidade por Funcionamento")
 
-if "cores_mapa" not in st.session_state:
-    cores = {}
-    for sit in situacoes:
-        cores[sit] = "#{:06x}".format(random.randint(0, 0xFFFFFF))
-    st.session_state.cores_mapa = cores
+contagem_func = df["FUNCIONANDO"].value_counts()
+cols = st.columns(len(contagem_func))
 
-cores = st.session_state.cores_mapa
+def cor_funcionando(func):
+    if func == "SIM":
+        return "blue"
+    elif func == "NÃO":
+        return "red"
+    else:
+        return "gray"
 
-def get_color(situacao):
-    return cores.get(situacao, "#999999")
-
-# -------------------------------
-# MAPA
-# -------------------------------
-mapa = folium.Map(location=[-14.2350, -51.9253], zoom_start=4)
-
-# -------------------------------
-# MARCADORES
-# -------------------------------
-for lat, lon, estado, sit, func in zip(
-    df[col_lat],
-    df[col_lon],
-    df[col_estado],
-    df[col_sit],
-    df[col_func]
-):
-    folium.CircleMarker(
-        location=[lat, lon],
-        radius=5,
-        color=get_color(sit),
-        fill=True,
-        fill_opacity=0.7,
-        popup=f"""
-        <b>Estado:</b> {estado}<br>
-        <b>Situação:</b> {sit}<br>
-        <b>Funcionando:</b> {func}
-        """
-    ).add_to(mapa)
-
-# -------------------------------
-# MOSTRAR MAPA
-# -------------------------------
-st_folium(mapa, use_container_width=True)
-
-# -------------------------------
-# LEGENDA FORA DO MAPA
-# -------------------------------
-st.markdown("### Legenda")
-
-for sit, cor in cores.items():
-    nome = sit
-
-    # simplificar texto longo
-    if "não está em operação" in sit.lower():
-        nome = "Sistema não está em operação"
-
-    st.markdown(
-        f"<span style='color:{cor}; font-size:18px;'>●</span> {nome}",
+for i, (func, val) in enumerate(contagem_func.items()):
+    cols[i].markdown(
+        f"<h3 style='color:{cor_funcionando(func)}'>{val}</h3><p>{func}</p>",
         unsafe_allow_html=True
     )
+
+# =========================
+# 🔹 FILTROS
+# =========================
+col1, col2, col3 = st.columns(3)
+
+# SITUAÇÃO (mantido como filtro, mas sem dashboard)
+situacoes = ["TODOS"] + sorted(df["SITUAÇÃO"].unique())
+filtro_situacao = col1.selectbox("Situação:", situacoes)
+
+# ESTADO
+estados = ["TODOS"] + sorted(df["ESTADO"].unique())
+filtro_estado = col2.selectbox("Estado:", estados)
+
+# COMUNIDADE
+df_temp = df.copy()
+
+if filtro_estado != "TODOS":
+    df_temp = df_temp[df_temp["ESTADO"] == filtro_estado]
+
+comunidades = ["TODOS"] + sorted(df_temp["COMUNIDADE"].unique())
+filtro_comunidade = col3.selectbox("Comunidade:", comunidades)
+
+# =========================
+# 🔹 APLICAR FILTROS
+# =========================
+df_filtrado = df.copy()
+
+if filtro_situacao != "TODOS":
+    df_filtrado = df_filtrado[df_filtrado["SITUAÇÃO"] == filtro_situacao]
+
+if filtro_estado != "TODOS":
+    df_filtrado = df_filtrado[df_filtrado["ESTADO"] == filtro_estado]
+
+if filtro_comunidade != "TODOS":
+    df_filtrado = df_filtrado[df_filtrado["COMUNIDADE"] == filtro_comunidade]
+
+# =========================
+# 🔹 MAPA
+# =========================
+mapa = folium.Map(
+    location=[-14, -52],
+    zoom_start=4,
+    prefer_canvas=True
+)
+
+def get_color(func, situacao):
+    if situacao == "SEM INFORMAÇÃO":
+        return "gray"
+    elif func == "SIM":
+        return "blue"
+    elif func == "NÃO":
+        return "red"
+    return "gray"
+
+# =========================
+# 🔹 PLOTAR PONTOS
+# =========================
+for _, row in df_filtrado.iterrows():
+
+    tooltip = f"{row['ESTADO']} - {row['COMUNIDADE']}"
+
+    popup = f"""
+    <b>Comunidade:</b> {row['COMUNIDADE']}<br>
+    <b>Município:</b> {row['MUNICIPIO']}<br>
+    <b>Estado:</b> {row['ESTADO']}<br>
+    <b>Situação:</b> {row['SITUAÇÃO']}<br>
+    <b>Funcionando:</b> {row['FUNCIONANDO']}
+    """
+
+    folium.CircleMarker(
+        location=[row["lat"], row["lon"]],
+        radius=5,
+        color=get_color(row["FUNCIONANDO"], row["SITUAÇÃO"]),
+        fill=True,
+        fill_color=get_color(row["FUNCIONANDO"], row["SITUAÇÃO"]),
+        fill_opacity=0.7,
+        tooltip=tooltip,
+        popup=popup
+    ).add_to(mapa)
+
+# =========================
+# 🔹 AUTO ZOOM
+# =========================
+coords = df_filtrado[["lat", "lon"]].values.tolist()
+if coords:
+    mapa.fit_bounds(coords)
+
+# =========================
+# 🔹 LEGENDA (FUNCIONANDO)
+# =========================
+contagem_legenda = df_filtrado["FUNCIONANDO"].value_counts()
+
+html_legenda = """
+<div style="
+position: fixed; 
+bottom: 50px; left: 50px; width: 220px; 
+background-color: white; 
+border:2px solid grey; 
+z-index:9999; 
+font-size:14px;
+padding: 10px;
+">
+<b>Funcionamento</b><br>
+"""
+
+for func, val in contagem_legenda.items():
+    cor = cor_funcionando(func)
+    html_legenda += f"""
+    <i style="background:{cor};width:10px;height:10px;display:inline-block;margin-right:5px;"></i>
+    {func}: {val}<br>
+    """
+
+html_legenda += "</div>"
+
+mapa.get_root().html.add_child(folium.Element(html_legenda))
+
+# =========================
+# 🔹 RENDER
+# =========================
+st_folium(mapa, width=1200, height=600)
